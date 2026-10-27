@@ -1,0 +1,33 @@
+[build-system]
+# 1.27 is the first release that reads an SPDX `license` string (PEP 639).
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nextdeck"
+version = "0.1.0"
+description = "Tray-resident desktop client that views a Nextcloud Deck board by due date"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "0BSD"
+license-files = ["LICENSE"]
+dependencies = [
+    "PySide6>=6.5",
+    "requests>=2.28",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "responses>=0.23",
+]
+
+[project.scripts]
+nextdeck = "nextdeck.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nextdeck"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

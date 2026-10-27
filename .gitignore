@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# Virtualenvs
+.venv/
+venv/
+
+# Dependencies installed with `pip install --target` as a venv-less fallback.
+.pydeps/
+.venv-*/
