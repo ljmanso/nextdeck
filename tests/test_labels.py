@@ -228,6 +228,15 @@ if QT:
         def save_task(self, task, title, description, duedate, label_ids=None):
             self.saves.append((task.id, label_ids))
 
+        def create_label(self, title, color):
+            self.saves.append(("create_label", title, color))
+
+        def update_label(self, label_id, title, color):
+            self.saves.append(("update_label", label_id, title, color))
+
+        def delete_label(self, label_id, title):
+            self.saves.append(("delete_label", label_id, title))
+
         def stop(self):
             pass
 
@@ -590,9 +599,9 @@ def test_the_add_dialog_hides_labels_on_a_board_without_any(qapp):
 
 @requires_qt
 def test_the_label_dialog_refuses_a_duplicate_title(qapp):
-    from nextdeck.ui.label_dialog import NewLabelDialog
+    from nextdeck.ui.label_dialog import LabelDialog
 
-    dialog = NewLabelDialog(BOARD_LABELS)
+    dialog = LabelDialog(BOARD_LABELS)
     assert not dialog._ok_button.isEnabled(), "an empty title is not a label"
 
     dialog.title_edit.setText("Urgent")
@@ -602,6 +611,19 @@ def test_the_label_dialog_refuses_a_duplicate_title(qapp):
     dialog.set_color("#7c31cc")
     assert dialog._ok_button.isEnabled()
     assert dialog.values() == ("errands", "7C31CC")
+    dialog.deleteLater()
+
+
+@requires_qt
+def test_editing_a_label_starts_from_it_and_may_keep_its_title(qapp):
+    from nextdeck.ui.label_dialog import LabelDialog
+
+    dialog = LabelDialog(BOARD_LABELS, BOARD_LABELS[1])
+    assert dialog.values() == ("migration", "31CC7C")
+    assert dialog._ok_button.isEnabled(), "its own title is not a duplicate"
+
+    dialog.title_edit.setText("urgent")
+    assert not dialog._ok_button.isEnabled(), "another label's title still is"
     dialog.deleteLater()
 
 
@@ -618,3 +640,158 @@ def test_creating_a_label_keeps_edits_in_the_open_editor(qapp):
         True, True, False, False
     ]
     editor.deleteLater()
+
+
+# -- managing labels --------------------------------------------------------
+
+
+@responses.activate
+def test_updating_a_label_puts_title_and_colour():
+    import json
+
+    responses.add(responses.PUT, f"{BASE}/boards/1/labels/3", json={"id": 3}, status=200)
+
+    client().update_label(1, 3, "later", "#abcdef")
+
+    assert json.loads(responses.calls[0].request.body) == {
+        "title": "later", "color": "ABCDEF"
+    }
+
+
+@responses.activate
+def test_deleting_a_label_uses_its_route():
+    responses.add(responses.DELETE, f"{BASE}/boards/1/labels/3", status=200)
+
+    client().delete_label(1, 3)
+
+    assert len(responses.calls) == 1
+
+
+class ManagingClient(CreatingClient):
+    def __init__(self):
+        super().__init__()
+        self.updated: list[tuple] = []
+        self.deleted: list[tuple] = []
+
+    def update_label(self, board_id, label_id, title, color):
+        self.updated.append((board_id, label_id, title, color))
+        return {"id": label_id}
+
+    def delete_label(self, board_id, label_id):
+        self.deleted.append((board_id, label_id))
+
+
+@requires_qt
+@pytest.mark.parametrize("action", ["update", "delete"])
+def test_changing_a_label_reloads_labels_and_cards(qapp, action):
+    """Cards carry label titles, so they have to come back too."""
+    recorder = ManagingClient()
+    worker = _worker_with(recorder)
+    labels: list = []
+    tasks: list = []
+    worker.labels_loaded.connect(labels.append)
+    worker.tasks_loaded.connect(tasks.append)
+
+    if action == "update":
+        worker.update_label(3, "someday", "317CCC")
+        assert recorder.updated == [(1, 3, "someday", "317CCC")]
+    else:
+        worker.delete_label(3, "later")
+        assert recorder.deleted == [(1, 3)]
+
+    assert len(labels) == 1 and len(tasks) == 1
+
+
+def _manager(answer=None, confirm=True):
+    from nextdeck.ui.label_dialog import LabelManagerWindow
+
+    manager = LabelManagerWindow("Work")
+    manager._ask_label = lambda label: answer
+    manager._confirm_delete = lambda label: confirm
+    emitted: list = []
+    manager.create_requested.connect(lambda *a: emitted.append(("create", *a)))
+    manager.update_requested.connect(lambda *a: emitted.append(("update", *a)))
+    manager.delete_requested.connect(lambda *a: emitted.append(("delete", *a)))
+    manager.set_labels(BOARD_LABELS, {1: 2})
+    return manager, emitted
+
+
+@requires_qt
+def test_the_manager_lists_labels_with_their_use(qapp):
+    manager, _ = _manager()
+    texts = [manager.list.item(i).text() for i in range(manager.list.count())]
+    assert texts == ["urgent  ·  2 tasks", "migration", "later"]
+    assert not manager.edit_button.isEnabled(), "nothing selected yet"
+    manager.deleteLater()
+
+
+@requires_qt
+def test_the_manager_asks_to_create(qapp):
+    manager, emitted = _manager(answer=("errands", "31CC7C"))
+    manager.add_label()
+    assert emitted == [("create", "errands", "31CC7C")]
+    manager.deleteLater()
+
+
+@requires_qt
+def test_the_manager_asks_to_update_the_selected_label(qapp):
+    manager, emitted = _manager(answer=("someday", "317CCC"))
+    manager.list.setCurrentRow(2)
+    manager.edit_selected()
+    assert emitted == [("update", 3, "someday", "317CCC")]
+    manager.deleteLater()
+
+
+@requires_qt
+def test_an_unchanged_edit_writes_nothing(qapp):
+    manager, emitted = _manager(answer=("later", "317CCC"))
+    manager.list.setCurrentRow(2)
+    manager.edit_selected()
+    assert emitted == []
+    manager.deleteLater()
+
+
+@requires_qt
+def test_the_manager_deletes_only_when_confirmed(qapp):
+    manager, emitted = _manager(confirm=False)
+    manager.list.setCurrentRow(0)
+    manager.delete_selected()
+    assert emitted == []
+
+    manager._confirm_delete = lambda label: True
+    manager.delete_selected()
+    assert emitted == [("delete", 1, "urgent")]
+    manager.deleteLater()
+
+
+@requires_qt
+def test_the_selection_survives_a_reload(qapp):
+    manager, _ = _manager()
+    manager.list.setCurrentRow(1)
+    manager.set_labels([Label(9, "errands", "FF7A66")] + BOARD_LABELS)
+    assert manager.selected_label().id == 2
+    manager.deleteLater()
+
+
+@requires_qt
+def test_the_window_opens_one_manager_and_keeps_it_current(board, qapp):
+    win, controller = board
+    controller.labels_loaded.emit(BOARD_LABELS)
+    controller.tasks_loaded.emit([task(1, label_ids=[2]), task(2, label_ids=[2])])
+    qapp.processEvents()
+
+    win.edit_labels()
+    manager = win._label_manager
+    win.edit_labels()
+    assert win._label_manager is manager, "reused, not stacked"
+    assert manager.list.item(1).text() == "migration  ·  2 tasks"
+
+    controller.labels_loaded.emit(BOARD_LABELS + [Label(9, "errands", "FF7A66")])
+    qapp.processEvents()
+    assert manager.list.count() == 4
+
+    manager._confirm_delete = lambda label: True
+    manager.list.setCurrentRow(3)
+    manager.delete_selected()
+    assert controller.saves[-1] == ("delete_label", 9, "errands")
+    manager.close()

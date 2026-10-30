@@ -308,6 +308,23 @@ class DeckClient:
             or {}
         )
 
+    def update_label(
+        self, board_id: int, label_id: int, title: str, color: str
+    ) -> dict[str, Any]:
+        """Rename or recolour one of a board's labels."""
+        return (
+            self._request(
+                "PUT",
+                f"/boards/{board_id}/labels/{label_id}",
+                json={"title": title, "color": color.lstrip("#").upper()},
+            )
+            or {}
+        )
+
+    def delete_label(self, board_id: int, label_id: int) -> None:
+        """Remove a label from the board, and so from every card wearing it."""
+        self._request("DELETE", f"/boards/{board_id}/labels/{label_id}")
+
     def delete_card(self, task: Task) -> None:
         """Delete a card. Deck soft-deletes into the board's trash."""
         self._request(

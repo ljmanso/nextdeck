@@ -31,7 +31,8 @@ useful, not to nag you.
 - **Search** across titles, details, labels and stacks, filtering the board
 - **Labels** shown in the board's own colours, editable from the card editor,
   and clickable to filter the board down to one of them
-- **New labels** defined from the toolbar or tray, with a title and a colour
+- **Edit labels** from the toolbar or tray: add, rename, recolour or delete the
+  board's labels in a window of their own
 - **Choose which columns to show** — hide Done, or keep only the near-term ones.
   The columns you keep share the width, and empty ones collapse out of the way
 - **Adjustable font size** and card title line limit

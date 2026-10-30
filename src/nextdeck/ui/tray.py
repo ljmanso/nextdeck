@@ -15,7 +15,7 @@ from .icon import app_icon
 class TrayIcon(QSystemTrayIcon):
     toggle_requested = Signal()
     add_requested = Signal()
-    new_label_requested = Signal()
+    labels_requested = Signal()
     refresh_requested = Signal()
     settings_requested = Signal()
     quit_requested = Signal()
@@ -28,7 +28,7 @@ class TrayIcon(QSystemTrayIcon):
         menu.addAction("Show / hide", self.toggle_requested.emit)
         menu.addSeparator()
         menu.addAction("Add task…", self.add_requested.emit)
-        menu.addAction("New label…", self.new_label_requested.emit)
+        menu.addAction("Edit labels…", self.labels_requested.emit)
         menu.addAction("Refresh", self.refresh_requested.emit)
         menu.addAction("Settings…", self.settings_requested.emit)
         menu.addSeparator()

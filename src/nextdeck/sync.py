@@ -235,6 +235,37 @@ class SyncWorker(QObject):
         if self._run(work, f"Created the label “{title}”") is not None:
             self.fetch_labels()
 
+    @Slot(int, str, str)
+    def update_label(self, label_id: int, title: str, color: str) -> None:
+        """Rename or recolour a label. Cards carry its title, so they reload too."""
+        board_id = self._config.board.id
+        if not board_id:
+            self.error.emit("No board is configured")
+            return
+
+        def work():
+            return self._ensure_client().update_label(board_id, label_id, title, color)
+
+        if self._run(work, f"Updated the label “{title}”") is not None:
+            self.fetch_labels()
+            self.refresh()
+
+    @Slot(int, str)
+    def delete_label(self, label_id: int, title: str) -> None:
+        """Delete a label from the board. Deck strips it from every card."""
+        board_id = self._config.board.id
+        if not board_id:
+            self.error.emit("No board is configured")
+            return
+
+        def work():
+            self._ensure_client().delete_label(board_id, label_id)
+            return True
+
+        if self._run(work, f"Deleted the label “{title}”") is not None:
+            self.fetch_labels()
+            self.refresh()
+
     @Slot(object, object)
     def reopen_with_duedate(self, task: Task, duedate: datetime | None) -> None:
         """Un-complete a task and set its due date in one request."""
@@ -339,6 +370,8 @@ class SyncController(QObject):
     _refresh_requested = Signal()
     _create_requested = Signal(str, str, object, object)
     _create_label_requested = Signal(str, str)
+    _update_label_requested = Signal(int, str, str)
+    _delete_label_requested = Signal(int, str)
     _done_requested = Signal(object, bool)
     _duedate_requested = Signal(object, object)
     _save_requested = Signal(object, str, str, object, object)
@@ -360,6 +393,8 @@ class SyncController(QObject):
         self._refresh_requested.connect(self.worker.refresh)
         self._create_requested.connect(self.worker.create_task)
         self._create_label_requested.connect(self.worker.create_label)
+        self._update_label_requested.connect(self.worker.update_label)
+        self._delete_label_requested.connect(self.worker.delete_label)
         self._done_requested.connect(self.worker.set_done)
         self._duedate_requested.connect(self.worker.set_duedate)
         self._save_requested.connect(self.worker.save_task)
@@ -434,6 +469,12 @@ class SyncController(QObject):
 
     def create_label(self, title: str, color: str) -> None:
         self._create_label_requested.emit(title, color)
+
+    def update_label(self, label_id: int, title: str, color: str) -> None:
+        self._update_label_requested.emit(label_id, title, color)
+
+    def delete_label(self, label_id: int, title: str) -> None:
+        self._delete_label_requested.emit(label_id, title)
 
     def set_done(self, task: Task, done: bool) -> None:
         self._done_requested.emit(task, done)

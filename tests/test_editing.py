@@ -56,6 +56,12 @@ class FakeController(QObject):
     def create_label(self, title, color):
         self.calls.append(("create_label", title, color))
 
+    def update_label(self, label_id, title, color):
+        self.calls.append(("update_label", label_id, title, color))
+
+    def delete_label(self, label_id, title):
+        self.calls.append(("delete_label", label_id, title))
+
     def set_done(self, task, done):
         self.calls.append(("set_done", task.id, done))
 

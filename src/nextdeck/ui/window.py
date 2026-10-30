@@ -44,7 +44,7 @@ from .add_dialog import AddTaskDialog, DueDateDialog
 from .card import CardWidget
 from .column import ColumnWidget
 from .editor import TaskEditor
-from .label_dialog import NewLabelDialog
+from .label_dialog import LabelManagerWindow
 from .icon import app_icon
 from .theme import apply_font_size
 from .settings_dialog import SettingsDialog
@@ -105,6 +105,8 @@ class MainWindow(QMainWindow):
         #: The board's label set, and a title -> colour map built from it.
         self._labels: list = []
         self._label_colors: dict[str, str] = {}
+        #: Created on first use; kept so reopening it is instant.
+        self._label_manager: LabelManagerWindow | None = None
         #: Overridable so tests need not monkeypatch a Qt type.
         self._tray_available = _system_tray_available
 
@@ -154,10 +156,10 @@ class MainWindow(QMainWindow):
         self.add_action.triggered.connect(self.add_task)
         toolbar.addAction(self.add_action)
 
-        self.new_label_action = QAction("New label", self)
-        self.new_label_action.setToolTip("Define a new label on this board")
-        self.new_label_action.triggered.connect(self.new_label)
-        toolbar.addAction(self.new_label_action)
+        self.labels_action = QAction("Edit labels", self)
+        self.labels_action.setToolTip("Add, edit or delete this board's labels")
+        self.labels_action.triggered.connect(self.edit_labels)
+        toolbar.addAction(self.labels_action)
 
         self.refresh_action = QAction("Refresh", self)
         self.refresh_action.setShortcut(QKeySequence(QKeySequence.StandardKey.Refresh))
@@ -365,6 +367,8 @@ class MainWindow(QMainWindow):
         for column in self.columns.values():
             column.set_label_colors(self._label_colors)
         self.editor.set_labels(self._labels)
+        if self._label_manager is not None:
+            self._label_manager.set_labels(self._labels, self._label_usage())
         self._render(self._tasks)
 
     # -- search -----------------------------------------------------------
@@ -552,6 +556,8 @@ class MainWindow(QMainWindow):
         self._has_synced = True
         self._tasks = list(tasks)
         self._render(self._tasks)
+        if self._label_manager is not None:
+            self._label_manager.set_usage(self._label_usage())
         if first_load and self._focused_card() is None and self.editor.isHidden():
             # Give the board a keyboard starting point, but only once: later
             # refreshes must not yank focus out of whatever is in use.
@@ -610,17 +616,34 @@ class MainWindow(QMainWindow):
             title, description, duedate, dialog.selected_label_ids()
         )
 
-    def new_label(self) -> None:
-        """Define a label on the board. It reaches the editor once Deck has it."""
+    def edit_labels(self) -> None:
+        """Open the label manager, reusing the window if it is already up.
+
+        Changes go to the server through the controller; the manager only
+        shows them once Deck has answered and the label set has reloaded.
+        """
         if not self.config.is_complete():
             self.open_settings()
             return
-        dialog = NewLabelDialog(self._labels, self.config.board.title, self)
-        if dialog.exec() != NewLabelDialog.DialogCode.Accepted:
-            return
-        title, color = dialog.values()
-        if title:
-            self.controller.create_label(title, color)
+        manager = self._label_manager
+        if manager is None:
+            manager = LabelManagerWindow(self.config.board.title, self)
+            manager.create_requested.connect(self.controller.create_label)
+            manager.update_requested.connect(self.controller.update_label)
+            manager.delete_requested.connect(self.controller.delete_label)
+            self._label_manager = manager
+        manager.set_labels(self._labels, self._label_usage())
+        manager.show()
+        manager.raise_()
+        manager.activateWindow()
+
+    def _label_usage(self) -> dict[int, int]:
+        """How many tasks wear each label, by label id."""
+        usage: dict[int, int] = {}
+        for task in self._tasks:
+            for label_id in task.label_ids:
+                usage[label_id] = usage.get(label_id, 0) + 1
+        return usage
 
     def _on_card_activated(self, task: Task) -> None:
         """A click on a card, or Enter, opens the editor panel for it."""
