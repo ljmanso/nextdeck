@@ -20,6 +20,11 @@ from PySide6.QtWidgets import (
 )
 
 from .elided_label import WrappedLabel
+from .label_chip import LabelRow, LabelToggle
+from ..model import Label
+
+#: How wide the label toggles may run before wrapping onto another row.
+LABEL_ROW_WIDTH = 300
 
 
 def _to_datetime(edit: QDateTimeEdit) -> datetime:
@@ -86,9 +91,14 @@ class DueDateWidget(QWidget):
 
 
 class AddTaskDialog(QDialog):
-    """Collects a new task's title, description and optional due date."""
+    """Collects a new task's title, description, optional due date and labels."""
 
-    def __init__(self, board_hint: str = "", parent: QWidget | None = None):
+    def __init__(
+        self,
+        board_hint: str = "",
+        parent: QWidget | None = None,
+        labels: list[Label] | None = None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("Add task")
         self.setMinimumWidth(380)
@@ -108,6 +118,13 @@ class AddTaskDialog(QDialog):
 
         self.due_widget = DueDateWidget()
         form.addRow("Due", self.due_widget)
+
+        # A board with no labels defined gets no empty row.
+        self.label_row = LabelRow()
+        for label in labels or []:
+            self.label_row.add(LabelToggle(label), LABEL_ROW_WIDTH)
+        if labels:
+            form.addRow("Labels", self.label_row)
 
         layout.addLayout(form)
 
@@ -138,6 +155,11 @@ class AddTaskDialog(QDialog):
             self.description_edit.toPlainText().strip(),
             self.due_widget.value(),
         )
+
+    def selected_label_ids(self) -> list[int]:
+        return [
+            chip.label.id for chip in self.label_row.chips() if chip.isChecked()
+        ]
 
 
 class DueDateDialog(QDialog):

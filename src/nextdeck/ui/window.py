@@ -44,6 +44,7 @@ from .add_dialog import AddTaskDialog, DueDateDialog
 from .card import CardWidget
 from .column import ColumnWidget
 from .editor import TaskEditor
+from .label_dialog import NewLabelDialog
 from .icon import app_icon
 from .theme import apply_font_size
 from .settings_dialog import SettingsDialog
@@ -152,6 +153,11 @@ class MainWindow(QMainWindow):
         self.add_action.setShortcut(QKeySequence(QKeySequence.StandardKey.New))
         self.add_action.triggered.connect(self.add_task)
         toolbar.addAction(self.add_action)
+
+        self.new_label_action = QAction("New label", self)
+        self.new_label_action.setToolTip("Define a new label on this board")
+        self.new_label_action.triggered.connect(self.new_label)
+        toolbar.addAction(self.new_label_action)
 
         self.refresh_action = QAction("Refresh", self)
         self.refresh_action.setShortcut(QKeySequence(QKeySequence.StandardKey.Refresh))
@@ -594,13 +600,27 @@ class MainWindow(QMainWindow):
         hint = self.config.board.title
         if self.config.board.default_stack_title:
             hint = f"{hint} › {self.config.board.default_stack_title}"
-        dialog = AddTaskDialog(hint, self)
+        dialog = AddTaskDialog(hint, self, labels=self._labels)
         if dialog.exec() != AddTaskDialog.DialogCode.Accepted:
             return
         title, description, duedate = dialog.values()
         if not title:
             return
-        self.controller.create_task(title, description, duedate)
+        self.controller.create_task(
+            title, description, duedate, dialog.selected_label_ids()
+        )
+
+    def new_label(self) -> None:
+        """Define a label on the board. It reaches the editor once Deck has it."""
+        if not self.config.is_complete():
+            self.open_settings()
+            return
+        dialog = NewLabelDialog(self._labels, self.config.board.title, self)
+        if dialog.exec() != NewLabelDialog.DialogCode.Accepted:
+            return
+        title, color = dialog.values()
+        if title:
+            self.controller.create_label(title, color)
 
     def _on_card_activated(self, task: Task) -> None:
         """A click on a card, or Enter, opens the editor panel for it."""

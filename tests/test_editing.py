@@ -50,8 +50,11 @@ class FakeController(QObject):
     def refresh(self):
         self.calls.append(("refresh",))
 
-    def create_task(self, title, description="", duedate=None):
+    def create_task(self, title, description="", duedate=None, label_ids=None):
         self.calls.append(("create_task", title, description, duedate))
+
+    def create_label(self, title, color):
+        self.calls.append(("create_label", title, color))
 
     def set_done(self, task, done):
         self.calls.append(("set_done", task.id, done))

@@ -465,3 +465,156 @@ def test_an_id_less_duplicate_is_also_collapsed():
     )
     assert task.labels == ["ghost"]
     assert task.label_ids == []
+
+
+# -- creating labels and labelling new tasks -------------------------------
+
+
+@responses.activate
+def test_creating_a_label_posts_a_bare_hex_colour():
+    import json
+
+    responses.add(responses.POST, f"{BASE}/boards/1/labels",
+                  json={"id": 9, "title": "errands", "color": "31CC7C"}, status=200)
+
+    created = client().create_label(1, "errands", "#31cc7c")
+
+    assert json.loads(responses.calls[0].request.body) == {
+        "title": "errands", "color": "31CC7C"
+    }
+    assert created["id"] == 9
+
+
+@responses.activate
+def test_a_label_can_go_on_a_card_known_only_by_ids():
+    import json
+
+    responses.add(responses.PUT, f"{BASE}/boards/1/stacks/2/cards/5/assignLabel",
+                  json={}, status=200)
+
+    client().assign_label_to_card(1, 2, 5, 7)
+
+    assert json.loads(responses.calls[0].request.body) == {"labelId": 7}
+
+
+class CreatingClient(RecordingClient):
+    def __init__(self):
+        super().__init__()
+        self.created_labels: list[tuple] = []
+        self.card_labels: list[tuple] = []
+
+    def create_card(self, board_id, stack_id, title, description, duedate):
+        return {"id": 42, "stackId": stack_id}
+
+    def assign_label_to_card(self, board_id, stack_id, card_id, label_id):
+        self.card_labels.append((board_id, stack_id, card_id, label_id))
+
+    def create_label(self, board_id, title, color):
+        self.created_labels.append((board_id, title, color))
+        return {"id": 9}
+
+    def get_board(self, board_id):
+        return {"labels": [{"id": 9, "title": "errands", "color": "31CC7C"}]}
+
+
+def _worker_with(recorder):
+    from nextdeck.config import BoardConfig, Config, ServerConfig
+    from nextdeck.sync import SyncWorker
+
+    worker = SyncWorker(
+        Config(
+            server=ServerConfig(url="https://x", username="u", app_password="p"),
+            board=BoardConfig(id=1, default_stack_id=2),
+        )
+    )
+    worker._client = recorder
+    return worker
+
+
+@requires_qt
+def test_a_new_task_gets_its_labels_after_creation(qapp):
+    recorder = CreatingClient()
+    worker = _worker_with(recorder)
+
+    worker.create_task("t", "", None, [3, 1, 3])
+
+    assert recorder.card_labels == [(1, 2, 42, 1), (1, 2, 42, 3)]
+
+
+@requires_qt
+def test_a_new_task_without_labels_makes_no_label_calls(qapp):
+    recorder = CreatingClient()
+    worker = _worker_with(recorder)
+
+    worker.create_task("t", "", None, None)
+
+    assert recorder.card_labels == []
+
+
+@requires_qt
+def test_creating_a_label_reloads_the_label_set(qapp):
+    recorder = CreatingClient()
+    worker = _worker_with(recorder)
+    loaded: list = []
+    worker.labels_loaded.connect(loaded.append)
+
+    worker.create_label("errands", "31CC7C")
+
+    assert recorder.created_labels == [(1, "errands", "31CC7C")]
+    assert loaded == [[Label(9, "errands", "31CC7C")]]
+
+
+@requires_qt
+def test_the_add_dialog_offers_the_board_labels(qapp):
+    from nextdeck.ui.add_dialog import AddTaskDialog
+
+    dialog = AddTaskDialog(labels=BOARD_LABELS)
+    toggles = dialog.label_row.chips()
+    assert [t.text() for t in toggles] == ["urgent", "migration", "later"]
+
+    toggles[1].setChecked(True)
+
+    assert dialog.selected_label_ids() == [2]
+    dialog.deleteLater()
+
+
+@requires_qt
+def test_the_add_dialog_hides_labels_on_a_board_without_any(qapp):
+    from nextdeck.ui.add_dialog import AddTaskDialog
+
+    dialog = AddTaskDialog(labels=[])
+    assert not dialog.label_row.isVisible()
+    assert dialog.selected_label_ids() == []
+    dialog.deleteLater()
+
+
+@requires_qt
+def test_the_label_dialog_refuses_a_duplicate_title(qapp):
+    from nextdeck.ui.label_dialog import NewLabelDialog
+
+    dialog = NewLabelDialog(BOARD_LABELS)
+    assert not dialog._ok_button.isEnabled(), "an empty title is not a label"
+
+    dialog.title_edit.setText("Urgent")
+    assert not dialog._ok_button.isEnabled(), "matched regardless of case"
+
+    dialog.title_edit.setText("  errands  ")
+    dialog.set_color("#7c31cc")
+    assert dialog._ok_button.isEnabled()
+    assert dialog.values() == ("errands", "7C31CC")
+    dialog.deleteLater()
+
+
+@requires_qt
+def test_creating_a_label_keeps_edits_in_the_open_editor(qapp):
+    editor = TaskEditor()
+    editor.set_labels(BOARD_LABELS)
+    editor.open_task(task(1, label_ids=[2]))
+    editor.label_row.chips()[0].setChecked(True)
+
+    editor.set_labels(BOARD_LABELS + [Label(9, "errands", "31CC7C")])
+
+    assert [c.isChecked() for c in editor.label_row.chips()] == [
+        True, True, False, False
+    ]
+    editor.deleteLater()

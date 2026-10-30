@@ -114,9 +114,13 @@ class SyncWorker(QObject):
         if tasks is not None:
             self.tasks_loaded.emit(tasks)
 
-    @Slot(str, str, object)
+    @Slot(str, str, object, object)
     def create_task(
-        self, title: str, description: str, duedate: datetime | None
+        self,
+        title: str,
+        description: str,
+        duedate: datetime | None,
+        label_ids: list[int] | None = None,
     ) -> None:
         board = self._config.board
         if board.id is None or board.default_stack_id is None:
@@ -124,9 +128,19 @@ class SyncWorker(QObject):
             return
 
         def work():
-            return self._ensure_client().create_card(
+            client = self._ensure_client()
+            card = client.create_card(
                 board.id, board.default_stack_id, title, description, duedate
             )
+            # Deck's create route takes no labels, so they go on afterwards.
+            card_id = card.get("id")
+            if card_id is not None:
+                stack_id = int(card.get("stackId") or board.default_stack_id)
+                for label_id in sorted(set(label_ids or [])):
+                    client.assign_label_to_card(
+                        board.id, stack_id, int(card_id), label_id
+                    )
+            return card
 
         if self._run(work, f"Added “{title}”") is not None:
             self.refresh()
@@ -206,6 +220,20 @@ class SyncWorker(QObject):
             on_failure=lambda reason: self.save_failed.emit(task, reason),
         ) is not None:
             self.refresh()
+
+    @Slot(str, str)
+    def create_label(self, title: str, color: str) -> None:
+        """Define a new label on the board, then reload the label set."""
+        board_id = self._config.board.id
+        if not board_id:
+            self.error.emit("No board is configured to add the label to")
+            return
+
+        def work():
+            return self._ensure_client().create_label(board_id, title, color)
+
+        if self._run(work, f"Created the label “{title}”") is not None:
+            self.fetch_labels()
 
     @Slot(object, object)
     def reopen_with_duedate(self, task: Task, duedate: datetime | None) -> None:
@@ -309,7 +337,8 @@ class SyncController(QObject):
     # Internal request signals, connected to the worker's slots so that Qt
     # queues the call onto the worker thread.
     _refresh_requested = Signal()
-    _create_requested = Signal(str, str, object)
+    _create_requested = Signal(str, str, object, object)
+    _create_label_requested = Signal(str, str)
     _done_requested = Signal(object, bool)
     _duedate_requested = Signal(object, object)
     _save_requested = Signal(object, str, str, object, object)
@@ -330,6 +359,7 @@ class SyncController(QObject):
 
         self._refresh_requested.connect(self.worker.refresh)
         self._create_requested.connect(self.worker.create_task)
+        self._create_label_requested.connect(self.worker.create_label)
         self._done_requested.connect(self.worker.set_done)
         self._duedate_requested.connect(self.worker.set_duedate)
         self._save_requested.connect(self.worker.save_task)
@@ -394,9 +424,16 @@ class SyncController(QObject):
         self._refresh_requested.emit()
 
     def create_task(
-        self, title: str, description: str = "", duedate: datetime | None = None
+        self,
+        title: str,
+        description: str = "",
+        duedate: datetime | None = None,
+        label_ids: list[int] | None = None,
     ) -> None:
-        self._create_requested.emit(title, description, duedate)
+        self._create_requested.emit(title, description, duedate, label_ids)
+
+    def create_label(self, title: str, color: str) -> None:
+        self._create_label_requested.emit(title, color)
 
     def set_done(self, task: Task, done: bool) -> None:
         self._done_requested.emit(task, done)

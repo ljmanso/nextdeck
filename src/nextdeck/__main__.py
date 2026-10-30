@@ -157,6 +157,7 @@ def main(argv: list[str] | None = None) -> int:
         tray = TrayIcon(window)
         tray.toggle_requested.connect(window.toggle_visibility)
         tray.add_requested.connect(window.add_task)
+        tray.new_label_requested.connect(window.new_label)
         tray.refresh_requested.connect(controller.refresh)
         tray.settings_requested.connect(window.open_settings)
         tray.show()

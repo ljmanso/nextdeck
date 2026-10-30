@@ -198,7 +198,11 @@ class TaskEditor(QFrame):
         """The board's label set. Rebuilds the toggles for the open card."""
         self._labels = list(labels)
         if self.task is not None:
-            self._build_label_toggles(self.task.label_ids)
+            # Keep toggles already flipped: a label can be created while a
+            # card is open, and that must not undo the edit in progress.
+            chips = self.label_row.chips()
+            selected = self.selected_label_ids() if chips else self.task.label_ids
+            self._build_label_toggles(selected)
         else:
             self._show_labels(bool(self._labels))
 

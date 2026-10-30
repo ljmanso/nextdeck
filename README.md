@@ -21,7 +21,7 @@ useful, not to nag you.
 ## Features
 
 - **Due-date columns** computed locally, so completed cards never show as overdue
-- **Add tasks** with a title, Markdown details and an optional due date
+- **Add tasks** with a title, Markdown details, an optional due date and labels
 - **Click a card to edit it** in a panel beside the board — title, due date and
   details, without leaving the window. Save commits, Escape discards
 - **Complete / reopen** from the card, its context menu, the editor, or by
@@ -31,6 +31,7 @@ useful, not to nag you.
 - **Search** across titles, details, labels and stacks, filtering the board
 - **Labels** shown in the board's own colours, editable from the card editor,
   and clickable to filter the board down to one of them
+- **New labels** defined from the toolbar or tray, with a title and a colour
 - **Choose which columns to show** — hide Done, or keep only the near-term ones.
   The columns you keep share the width, and empty ones collapse out of the way
 - **Adjustable font size** and card title line limit

@@ -275,11 +275,37 @@ class DeckClient:
         self._label_request("removeLabel", task, label_id)
 
     def _label_request(self, action: str, task: Task, label_id: int) -> None:
+        self._card_label_request(
+            action, task.board_id, task.stack_id, task.id, label_id
+        )
+
+    def assign_label_to_card(
+        self, board_id: int, stack_id: int, card_id: int, label_id: int
+    ) -> None:
+        """Put a label on a card known only by its ids, such as one just created."""
+        self._card_label_request("assignLabel", board_id, stack_id, card_id, label_id)
+
+    def _card_label_request(
+        self, action: str, board_id: int, stack_id: int, card_id: int, label_id: int
+    ) -> None:
         self._request(
             "PUT",
-            f"/boards/{task.board_id}/stacks/{task.stack_id}"
-            f"/cards/{task.id}/{action}",
+            f"/boards/{board_id}/stacks/{stack_id}/cards/{card_id}/{action}",
             json={"labelId": int(label_id)},
+        )
+
+    def create_label(self, board_id: int, title: str, color: str) -> dict[str, Any]:
+        """Define a new label on a board.
+
+        Deck wants the colour as a bare RRGGBB string, with no leading hash.
+        """
+        return (
+            self._request(
+                "POST",
+                f"/boards/{board_id}/labels",
+                json={"title": title, "color": color.lstrip("#").upper()},
+            )
+            or {}
         )
 
     def delete_card(self, task: Task) -> None:
